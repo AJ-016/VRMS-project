@@ -10,6 +10,7 @@ Implemented:
 - Customer login and registration
 - Separate admin login
 - Persistent local user accounts
+- Salted SHA-256 password hashing for all stored passwords
 - Simple session state after login
 - Card-based customer vehicle catalog
 - Customer menu for catalog actions

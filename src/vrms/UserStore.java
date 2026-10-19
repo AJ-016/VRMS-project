@@ -2,6 +2,10 @@ package vrms;
 
 import javax.swing.JOptionPane;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,6 +14,66 @@ public class UserStore {
     public static final String DEFAULT_ADMIN_PASSWORD = "admin123";
 
     private UserStore() {
+    }
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int SALT_BYTES = 16;
+    private static final int SHA256_HEX_LENGTH = 64;
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder hex = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        byte[] bytes = new byte[hex.length() / 2];
+        for (int i = 0; i < hex.length(); i += 2) {
+            bytes[i / 2] = (byte) Integer.parseInt(hex.substring(i, i + 2), 16);
+        }
+        return bytes;
+    }
+
+    private static String sha256(byte[] salt, String password) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(salt);
+            digest.update(password.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(digest.digest());
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available on this system.", ex);
+        }
+    }
+
+    /** Creates a salted hash for storage, in the form {@code saltHex$hashHex}. */
+    private static String hashPassword(String password) {
+        byte[] salt = new byte[SALT_BYTES];
+        RANDOM.nextBytes(salt);
+        return bytesToHex(salt) + "$" + sha256(salt, password);
+    }
+
+    private static boolean isHashedFormat(String stored) {
+        return stored != null && stored.matches("[0-9a-f]{" + (SALT_BYTES * 2)
+                + "}\\$[0-9a-f]{" + SHA256_HEX_LENGTH + "}");
+    }
+
+    /**
+     * Verifies a plaintext password against a stored value. Supports the salted-hash
+     * format and legacy plaintext entries created before hashing was introduced.
+     */
+    private static boolean verifyPassword(String password, String stored) {
+        if (isHashedFormat(stored)) {
+            String saltHex = stored.substring(0, SALT_BYTES * 2);
+            String expectedHash = stored.substring(SALT_BYTES * 2 + 1);
+            try {
+                return sha256(hexToBytes(saltHex), password).equals(expectedHash);
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+        return stored.equals(password);
     }
 
     public static boolean ensureDefaultAdmin() {
@@ -51,20 +115,18 @@ public class UserStore {
     public static boolean login(String email, String password, String requiredRole) throws IOException {
         DataFiles.initialize();
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(DataFiles.USERS_FILE))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] user = line.split("\\|", -1);
-                if (user.length != 6) {
-                    continue;
+        List<String[]> users = readUsers();
+        for (String[] user : users) {
+            if (user[2].equalsIgnoreCase(email.trim())
+                    && user[5].equalsIgnoreCase(requiredRole)
+                    && verifyPassword(password, user[4])) {
+                if (!isHashedFormat(user[4])) {
+                    // Upgrade a legacy plaintext password to a salted hash on login.
+                    user[4] = hashPassword(password);
+                    rewriteUsers(users);
                 }
-
-                if (user[2].equalsIgnoreCase(email.trim())
-                        && user[4].equals(password)
-                        && user[5].equalsIgnoreCase(requiredRole)) {
-                    Session.start(Integer.parseInt(user[0]), user[1], user[2], user[5]);
-                    return true;
-                }
+                Session.start(Integer.parseInt(user[0]), user[1], user[2], user[5]);
+                return true;
             }
         }
 
@@ -138,7 +200,7 @@ public class UserStore {
         selectedUser[2] = email;
         selectedUser[3] = phone;
         if (!newPassword.isEmpty()) {
-            selectedUser[4] = newPassword;
+            selectedUser[4] = hashPassword(newPassword);
         }
 
         rewriteUsers(users);
@@ -188,7 +250,7 @@ public class UserStore {
     private static void appendUser(int id, String name, String email,
                                    String phone, String password, String role) throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(DataFiles.USERS_FILE, true))) {
-            writer.write(id + "|" + name + "|" + email + "|" + phone + "|" + password + "|" + role);
+            writer.write(id + "|" + name + "|" + email + "|" + phone + "|" + hashPassword(password) + "|" + role);
             writer.newLine();
         }
     }

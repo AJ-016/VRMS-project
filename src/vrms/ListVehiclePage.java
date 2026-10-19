@@ -27,7 +27,6 @@ public class ListVehiclePage extends JFrame {
                 backToCatalog();
             }
         });
-        setResizable(false);
 
         JPanel root = new JPanel();
         root.setBackground(UIColors.BG_PAGE);

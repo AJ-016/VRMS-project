@@ -24,7 +24,6 @@ public class AdminLoginPage extends JFrame {
                 dispose();
             }
         });
-        setResizable(false);
 
         JPanel root = new JPanel();
         root.setBackground(UIColors.BG_PAGE);

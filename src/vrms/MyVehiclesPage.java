@@ -23,7 +23,6 @@ public class MyVehiclesPage extends JFrame {
                 backToCatalog();
             }
         });
-        setResizable(false);
 
         JPanel root = new JPanel(new BorderLayout(0, 20));
         root.setBackground(UIColors.BG_PAGE);

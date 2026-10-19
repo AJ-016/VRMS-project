@@ -29,7 +29,6 @@ public class PaymentPage extends JFrame {
         setSize(520, 560);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setResizable(false);
 
         JPanel root = new JPanel();
         root.setBackground(UIColors.BG_PAGE);
